@@ -3,7 +3,7 @@ import { ExpenseForm } from './ExpenseForm';
 import { balances, computeShares, settle, type Expense } from './lib/split';
 import {
   addExpense, addMember, createRoom, deleteExpense, findRoom, joinRoom, myRooms, removeMember,
-  setSettlement, shareInvite, signIn, useRoom, type FoundRoom, type Profile, type Room, type RoomSummary,
+  setSettlement, shareInvite, signIn, updateExpense, useRoom, type FoundRoom, type Profile, type Room, type RoomSummary,
 } from './lib/store';
 
 const money = (n: number) => `${n < 0 ? '−' : ''}${Math.abs(n).toLocaleString()} 元`;
@@ -191,6 +191,7 @@ function RoomView({ roomId, me, onBack }: { roomId: string; me: Profile; onBack:
   const { room, error, reload } = useRoom(roomId);
   const [tab, setTab] = useState<Tab>('expenses');
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Expense | null>(null);
   const [msg, setMsg] = useState('');
   const [shared, setShared] = useState('');
 
@@ -227,7 +228,7 @@ function RoomView({ roomId, me, onBack }: { roomId: string; me: Profile; onBack:
         <p className="muted">
           房間代碼 <code className="code">{room.code}</code>
           <button className="ghost small-btn" onClick={invite}>{shared || '用 LINE 邀請朋友'}</button>
-          {locked && <span className="pill done">已結算，不能再新增花費</span>}
+          {locked && <span className="pill done">已結算，要補記請到「結算」重新開啟</span>}
         </p>
         <Members room={room} locked={locked} meId={meId} run={run} />
       </header>
@@ -249,9 +250,18 @@ function RoomView({ roomId, me, onBack }: { roomId: string; me: Profile; onBack:
             onCancel={() => setAdding(false)}
             onSave={async (e) => { if (await run(() => addExpense(room.id, e))) setAdding(false); }}
           />
+        ) : editing && !locked ? (
+          <ExpenseForm
+            key={editing.id}
+            members={room.members}
+            defaultPayer={meId}
+            initial={editing}
+            onCancel={() => setEditing(null)}
+            onSave={async (e) => { if (await run(() => updateExpense(editing.id, e))) setEditing(null); }}
+          />
         ) : (
           <ExpenseList room={room} locked={locked} nameOf={nameOf} onAdd={() => setAdding(true)}
-            onDelete={(id) => run(() => deleteExpense(id))} />
+            onEdit={setEditing} onDelete={(id) => run(() => deleteExpense(id))} />
         )
       )}
       {tab === 'ledger' && <Ledger room={room} nameOf={nameOf} meId={meId} />}
@@ -297,10 +307,12 @@ function Members({ room, locked, meId, run }: {
 
 const MODE_LABEL = { equal: '平分', amount: '按金額', ratio: '按比例' } as const;
 
-function ExpenseList({ room, locked, nameOf, onAdd, onDelete }: {
-  room: Room; locked: boolean; nameOf: (id: string) => string; onAdd: () => void; onDelete: (id: string) => void;
+function ExpenseList({ room, locked, nameOf, onAdd, onEdit, onDelete }: {
+  room: Room; locked: boolean; nameOf: (id: string) => string; onAdd: () => void;
+  onEdit: (e: Expense) => void; onDelete: (id: string) => void;
 }) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const list = [...room.expenses].sort((a, b) => b.createdAt - a.createdAt);
   const total = room.expenses.reduce((a, e) => a + e.amount, 0);
 
@@ -314,12 +326,12 @@ function ExpenseList({ room, locked, nameOf, onAdd, onDelete }: {
       <ul className="expense-list">
         {list.map((e) => (
           <li key={e.id} className="expense">
-            <div className="expense-main">
+            <button className="expense-main" aria-expanded={openId === e.id} onClick={() => setOpenId(openId === e.id ? null : e.id)}>
               <span className="expense-title">{e.title}</span>
               <span className="muted">
                 {Object.entries(e.payers).map(([id, v]) => `${nameOf(id)} 付 ${v.toLocaleString()}`).join('、')} · {MODE_LABEL[e.split.mode]}
               </span>
-            </div>
+            </button>
             <span className="money">{money(e.amount)}</span>
             {!locked && (confirmId === e.id ? (
               <span className="confirm">
@@ -327,13 +339,40 @@ function ExpenseList({ room, locked, nameOf, onAdd, onDelete }: {
                 <button className="ghost" onClick={() => setConfirmId(null)}>取消</button>
               </span>
             ) : (
-              <button className="ghost icon" aria-label={`刪除 ${e.title}`} onClick={() => setConfirmId(e.id)}>×</button>
+              <span className="confirm">
+                <button className="ghost" onClick={() => onEdit(e)}>編輯</button>
+                <button className="ghost icon" aria-label={`刪除 ${e.title}`} onClick={() => setConfirmId(e.id)}>×</button>
+              </span>
             ))}
+            {openId === e.id && <ExpenseDetail e={e} room={room} />}
           </li>
         ))}
         {list.length === 0 && <li className="empty">還沒有花費，按「新增花費」記下第一筆。</li>}
       </ul>
     </section>
+  );
+}
+
+/** 一筆花費的明細：每位相關成員付了多少、分攤多少。 */
+function ExpenseDetail({ e, room }: { e: Expense; room: Room }) {
+  const shares = computeShares(e.amount, e.split, e.payers);
+  const rows = room.members.filter((m) => e.payers[m.id] || shares[m.id]);
+  return (
+    <div className="expense-detail table-wrap">
+      <table>
+        <thead><tr><th>成員</th><th className="num">付</th><th className="num">分攤</th></tr></thead>
+        <tbody>
+          {rows.map((m) => (
+            <tr key={m.id}>
+              <td>{m.name}</td>
+              <td className="num">{e.payers[m.id] ? e.payers[m.id].toLocaleString() : '—'}</td>
+              <td className="num">{shares[m.id] ? shares[m.id].toLocaleString() : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="muted">記錄於 {new Date(e.createdAt).toLocaleString('zh-TW', { dateStyle: 'short', timeStyle: 'short' })}</p>
+    </div>
   );
 }
 
@@ -403,6 +442,7 @@ function Settle({ room, nameOf, onSettle }: {
   room: Room; nameOf: (id: string) => string; onSettle: (s: Room['settlement']) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const b = balances(room.members.map((m) => m.id), room.expenses);
   const preview = settle(Object.fromEntries(Object.entries(b).map(([id, x]) => [id, x.net])));
   const s = room.settlement;
@@ -447,6 +487,18 @@ function Settle({ room, nameOf, onSettle }: {
         </div>
       ) : (
         <button className="primary" disabled={room.expenses.length === 0} onClick={() => setConfirming(true)}>結算</button>
+      ))}
+
+      {s && (reopening ? (
+        <div className="confirm-box">
+          <span>重新開啟後可以補記或修改花費，之後要再按一次結算。{s.received.some(Boolean) && '目前的「已收到」標記會被清除。'}</span>
+          <div className="actions">
+            <button className="ghost" onClick={() => setReopening(false)}>再想想</button>
+            <button className="primary" onClick={() => { setReopening(false); onSettle(null); }}>確定重新開啟</button>
+          </div>
+        </div>
+      ) : (
+        <button className="ghost" onClick={() => setReopening(true)}>重新開啟房間（補記花費）</button>
       ))}
     </section>
   );

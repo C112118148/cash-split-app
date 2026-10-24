@@ -159,7 +159,10 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 500; display: flex; align-
 .summary { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .summary .big { font-size: 1.6rem; font-weight: 700; }
 .summary .primary { margin-left: auto; align-self: center; }
-.expense-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.expense { flex-wrap: wrap; }
+.expense-main { flex: 1; min-width: 0; display: flex; flex-direction: column; text-align: left; padding: 0; }
+.expense-detail { flex-basis: 100%; }
+.expense-detail p { margin: 6px 0 0; font-size: 0.8rem; }
 .expense-title { font-weight: 500; }
 
 .ledger-card { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
