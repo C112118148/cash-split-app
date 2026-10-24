@@ -40,11 +40,18 @@ export async function signIn(): Promise<Profile | null> {
   if (!session || session.user.user_metadata.line_sub !== lineSub) {
     const { data, error } = await db.functions.invoke('line-login', { body: { idToken: liff.getIDToken() } });
     if (error) {
-      // ID token 過期時重新登入 LINE 一次
-      liff.logout();
-      liff.login({ redirectUri: location.href });
-      return null;
+      // ID token 過期時重新登入 LINE 一次；再失敗就顯示錯誤，避免無限重複登入
+      if (!sessionStorage.getItem('relogin')) {
+        sessionStorage.setItem('relogin', '1');
+        liff.logout();
+        liff.login({ redirectUri: location.href });
+        return null;
+      }
+      sessionStorage.removeItem('relogin');
+      const detail = await error.context?.json?.().catch(() => null);
+      throw new Error(`登入失敗：${detail?.error ?? error.message}`);
     }
+    sessionStorage.removeItem('relogin');
     session = check(await db.auth.verifyOtp({ token_hash: data.tokenHash, type: 'magiclink' })).session;
   }
   const meta = session!.user.user_metadata;
