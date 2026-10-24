@@ -11,22 +11,29 @@ const MODES: { mode: Mode; label: string }[] = [
 
 const toInt = (s: string) => (s.trim() === '' ? 0 : Number(s));
 
-export function ExpenseForm({ members, defaultPayer, onSave, onCancel }: {
+const toTexts = (r: Record<string, number>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, String(v)]));
+
+/** initial 有值時是編輯既有花費，表單預先填好它的內容。 */
+export function ExpenseForm({ members, defaultPayer, initial, onSave, onCancel }: {
   members: Member[];
   defaultPayer: string;
+  initial?: Expense;
   onSave: (e: Omit<Expense, 'id' | 'createdAt'>) => void;
   onCancel: () => void;
 }) {
-  const [title, setTitle] = useState('');
-  const [amountText, setAmountText] = useState('');
-  const [multiPay, setMultiPay] = useState(false);
-  const [payer, setPayer] = useState(defaultPayer);
-  const [payAmounts, setPayAmounts] = useState<Record<string, string>>({});
-  const [mode, setMode] = useState<Mode>('equal');
-  const [included, setIncluded] = useState<string[]>(members.map((m) => m.id));
-  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
+  const s0 = initial?.split;
+  const payerIds = Object.keys(initial?.payers ?? {});
+  const singlePayer = initial && payerIds.length === 1 && initial.payers[payerIds[0]] === initial.amount ? payerIds[0] : null;
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [amountText, setAmountText] = useState(initial ? String(initial.amount) : '');
+  const [multiPay, setMultiPay] = useState(!!initial && !singlePayer);
+  const [payer, setPayer] = useState(singlePayer ?? defaultPayer);
+  const [payAmounts, setPayAmounts] = useState<Record<string, string>>(initial && !singlePayer ? toTexts(initial.payers) : {});
+  const [mode, setMode] = useState<Mode>(s0?.mode ?? 'equal');
+  const [included, setIncluded] = useState<string[]>(s0?.mode === 'equal' ? s0.members : members.map((m) => m.id));
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>(s0?.mode === 'amount' ? toTexts(s0.amounts) : {});
   const [weights, setWeights] = useState<Record<string, string>>(
-    Object.fromEntries(members.map((m) => [m.id, '1'])),
+    s0?.mode === 'ratio' ? toTexts(s0.weights) : Object.fromEntries(members.map((m) => [m.id, '1'])),
   );
 
   const amount = toInt(amountText);
@@ -43,7 +50,7 @@ export function ExpenseForm({ members, defaultPayer, onSave, onCancel }: {
   const draft = { title, amount, payers, split };
   const errors = validateExpense(draft);
   const shares = amount > 0 ? computeShares(amount, split, payers) : {};
-  const touched = title !== '' || amountText !== '';
+  const touched = !!initial || title !== '' || amountText !== '';
 
   function submit(ev: React.FormEvent) {
     ev.preventDefault();
@@ -53,12 +60,12 @@ export function ExpenseForm({ members, defaultPayer, onSave, onCancel }: {
 
   return (
     <form className="sheet" onSubmit={submit}>
-      <h2>新增花費</h2>
+      <h2>{initial ? '編輯花費' : '新增花費'}</h2>
 
       <div className="row2">
         <label className="field">
           <span>品名</span>
-          <input id="exp-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：午餐 牛肉湯" autoFocus />
+          <input id="exp-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例如：午餐 牛肉湯" autoFocus={!initial} />
         </label>
         <label className="field">
           <span>總金額（元）</span>

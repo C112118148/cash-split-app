@@ -147,6 +147,10 @@ export async function addExpense(roomId: string, e: Omit<Expense, 'id' | 'create
   check(await db.from('expenses').insert({ room_id: roomId, title: e.title, amount: e.amount, payers: e.payers, split: e.split }));
 }
 
+export async function updateExpense(id: string, e: Omit<Expense, 'id' | 'createdAt'>) {
+  check(await db.from('expenses').update({ title: e.title, amount: e.amount, payers: e.payers, split: e.split }).eq('id', id));
+}
+
 export async function deleteExpense(id: string) {
   check(await db.from('expenses').delete().eq('id', id));
 }
