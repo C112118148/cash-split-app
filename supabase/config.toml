@@ -1,0 +1,3 @@
+# 登入前就要呼叫，所以不檢查 Supabase 的 JWT
+[functions.line-login]
+verify_jwt = false

@@ -1,0 +1,11 @@
+{
+  "name": "分好帳",
+  "short_name": "分好帳",
+  "description": "旅遊、聚餐分帳，最少轉帳一次結清",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F2F4F1",
+  "theme_color": "#1F5E57",
+  "lang": "zh-Hant",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
